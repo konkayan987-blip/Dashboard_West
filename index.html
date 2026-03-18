@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Production Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- HTML2Canvas for Screen Capture -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        
+        body { 
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #f1f5f9; 
+            background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        .chart-container { position: relative; height: 320px; width: 100%; }
+        .pie-container { position: relative; height: 250px; width: 100%; }
+        
+        /* Modern Chart Wrapper (Background & Shadow) */
+        .chart-wrapper {
+            background-color: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.06) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.06) 0px, transparent 50%);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 40px -10px rgba(15, 23, 42, 0.06), 
+                        inset 0 1px 0 rgba(255, 255, 255, 1);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+        }
+        .chart-wrapper:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.09), 
+                        inset 0 1px 0 rgba(255, 255, 255, 1);
+        }
+
+        /* Scrollbars */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800">
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="flex flex-col items-center justify-center h-screen bg-slate-50 text-slate-700 fixed inset-0 z-50">
+        <i data-lucide="refresh-cw" class="w-12 h-12 animate-spin text-indigo-500 mb-4"></i>
+        <h2 class="text-xl font-bold tracking-wide mt-4">กำลังโหลดข้อมูลจากชีต MASTER_DATA และ out_put...</h2>
+    </div>
+
+    <!-- Main Content (Hidden by default until loaded) -->
+    <div id="appContent" class="hidden p-4 md:p-8 font-sans">
+        
+        <!-- Colorful Header Section -->
+        <div class="max-w-7xl mx-auto bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 rounded-3xl shadow-lg p-8 mb-8 text-white relative overflow-hidden">
+            <div class="absolute -top-12 -right-10 w-48 h-48 bg-white opacity-10 rounded-full blur-2xl"></div>
+            <div class="absolute -bottom-10 -left-10 w-40 h-40 bg-white opacity-10 rounded-full blur-2xl"></div>
+
+            <div class="relative flex flex-col md:flex-row justify-between items-start md:items-center z-10">
+                <div>
+                    <h1 class="text-3xl md:text-4xl font-extrabold flex items-center gap-3 tracking-tight">
+                        <div class="p-2.5 bg-white/20 backdrop-blur-md rounded-xl shadow-inner border border-white/10">
+                            <i data-lucide="line-chart" class="w-8 h-8 text-white"></i>
+                        </div>
+                        Production Dashboard
+                    </h1>
+                    <p class="text-indigo-100 mt-3 text-sm md:text-base tracking-wide font-medium opacity-90">สรุปผลการผลิตและวิเคราะห์ของเสียจากฐานข้อมูล MASTER_DATA และ out_put</p>
+                </div>
+                <div class="mt-6 md:mt-0 flex flex-wrap items-center gap-3">
+                    <button onclick="captureDashboard()" id="captureBtn" class="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white px-5 py-2.5 rounded-xl shadow-sm transition-all font-medium">
+                        <i data-lucide="camera" class="w-4 h-4"></i> แคปหน้าจอ
+                    </button>
+                    <button onclick="fetchData()" class="flex items-center gap-2 bg-white text-indigo-700 hover:bg-indigo-50 hover:shadow-lg px-5 py-2.5 rounded-xl shadow-sm transition-all font-bold">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> อัปเดตข้อมูล
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fallback Warning -->
+        <div id="fallbackWarning" class="hidden max-w-7xl mx-auto mb-6 bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-xl flex gap-3 shadow-sm">
+            <i data-lucide="alert-circle" class="text-amber-500 w-6 h-6 flex-shrink-0"></i>
+            <p id="fallbackText" class="text-sm text-amber-700 font-medium"></p>
+        </div>
+
+        <!-- Filter Section -->
+        <div class="max-w-7xl mx-auto chart-wrapper p-6 mb-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-5 pb-3 border-b border-slate-200/50 gap-4">
+                <div class="flex items-center gap-2 text-slate-700 font-bold">
+                    <i data-lucide="sliders-horizontal" class="w-5 h-5 text-indigo-500"></i> ตัวกรองข้อมูล (Filters)
+                </div>
+                <!-- Quick Date Filters -->
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="setQuickDate(7)" class="text-xs px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:shadow-sm rounded-lg font-bold transition-all border border-indigo-100">
+                        <i data-lucide="calendar" class="w-3 h-3 inline-block mr-1"></i>7 วันล่าสุด
+                    </button>
+                    <button onclick="setQuickDate(15)" class="text-xs px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:shadow-sm rounded-lg font-bold transition-all border border-indigo-100">
+                        <i data-lucide="calendar" class="w-3 h-3 inline-block mr-1"></i>15 วันล่าสุด
+                    </button>
+                    <button onclick="setQuickDate(30)" class="text-xs px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:shadow-sm rounded-lg font-bold transition-all border border-indigo-100">
+                        <i data-lucide="calendar" class="w-3 h-3 inline-block mr-1"></i>30 วันล่าสุด
+                    </button>
+                    <button onclick="resetFilters()" class="text-xs px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:shadow-sm rounded-lg font-bold transition-all border border-slate-200">
+                        <i data-lucide="refresh-ccw" class="w-3 h-3 inline-block mr-1"></i>รีเซ็ตทั้งหมด
+                    </button>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">ตั้งแต่วันที่</label>
+                    <input type="date" id="startDate" class="px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white/80 hover:bg-white" />
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">ถึงวันที่</label>
+                    <input type="date" id="endDate" class="px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white/80 hover:bg-white" />
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">กะการทำงาน (Shift)</label>
+                    <select id="selectedShift" class="px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white/80 hover:bg-white cursor-pointer">
+                        <option value="ALL">แสดงทั้งหมด</option>
+                        <option value="A">กะ A</option>
+                        <option value="B">กะ B</option>
+                    </select>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">เครื่องจักร (Machine)</label>
+                    <select id="selectedMachine" class="px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white/80 hover:bg-white cursor-pointer">
+                        <option value="ALL">แสดงทั้งหมด</option>
+                        <option value="BHS">BHS</option>
+                        <option value="ISOWA">ISOWA</option>
+                        <option value="YUELI">YUELI</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <div class="chart-wrapper p-6 flex items-center gap-5 relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full opacity-50 group-hover:scale-110 transition-transform duration-500"></div>
+                <div class="w-14 h-14 bg-gradient-to-br from-blue-400 to-blue-600 text-white rounded-2xl flex items-center justify-center shadow-blue-200 shadow-lg z-10 flex-shrink-0">
+                    <i data-lucide="layers" class="w-7 h-7"></i>
+                </div>
+                <div class="z-10 truncate">
+                    <p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 truncate">จำนวนรายการผลิต</p>
+                    <h3 id="kpiTotalRows" class="text-2xl lg:text-3xl font-extrabold text-slate-800">0</h3>
+                </div>
+            </div>
+            
+            <div class="chart-wrapper p-6 flex items-center gap-5 relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/10 rounded-full opacity-50 group-hover:scale-110 transition-transform duration-500"></div>
+                <div class="w-14 h-14 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-emerald-200 shadow-lg z-10 flex-shrink-0">
+                    <i data-lucide="check-circle-2" class="w-7 h-7"></i>
+                </div>
+                <div class="z-10 truncate">
+                    <p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 truncate">ยอดผลิตผ่าน (Pass)</p>
+                    <h3 id="kpiTotalPass" class="text-2xl lg:text-3xl font-extrabold text-slate-800">0</h3>
+                </div>
+            </div>
+
+            <div class="chart-wrapper p-6 flex items-center gap-5 relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 w-24 h-24 bg-rose-500/10 rounded-full opacity-50 group-hover:scale-110 transition-transform duration-500"></div>
+                <div class="w-14 h-14 bg-gradient-to-br from-rose-400 to-rose-600 text-white rounded-2xl flex items-center justify-center shadow-rose-200 shadow-lg z-10 flex-shrink-0">
+                    <i data-lucide="x-octagon" class="w-7 h-7"></i>
+                </div>
+                <div class="z-10 truncate">
+                    <p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 truncate">ยอดของเสีย (NCP)</p>
+                    <h3 id="kpiTotalNcp" class="text-2xl lg:text-3xl font-extrabold text-slate-800">0</h3>
+                </div>
+            </div>
+
+            <!-- KPI CARD: Total NCP Weight -->
+            <div class="chart-wrapper p-6 flex items-center gap-5 relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 w-24 h-24 bg-pink-500/10 rounded-full opacity-50 group-hover:scale-110 transition-transform duration-500"></div>
+                <div class="w-14 h-14 bg-gradient-to-br from-pink-400 to-pink-600 text-white rounded-2xl flex items-center justify-center shadow-pink-200 shadow-lg z-10 flex-shrink-0">
+                    <i data-lucide="scale" class="w-7 h-7"></i>
+                </div>
+                <div class="z-10 truncate">
+                    <p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 truncate">น้ำหนักของเสียรวม (กก.)</p>
+                    <h3 id="kpiTotalNcpWeight" class="text-2xl lg:text-3xl font-extrabold text-slate-800">0</h3>
+                </div>
+            </div>
+
+            <!-- KPI CARD: อัตราของเสีย (ชิ้น) - Orange Pie Chart -->
+            <div class="chart-wrapper p-6 flex items-center gap-5 relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 w-24 h-24 bg-orange-500/10 rounded-full opacity-50 group-hover:scale-110 transition-transform duration-500"></div>
+                <div class="w-14 h-14 bg-gradient-to-br from-amber-400 to-orange-500 text-white rounded-2xl flex items-center justify-center shadow-orange-200 shadow-lg z-10 flex-shrink-0">
+                    <i data-lucide="pie-chart" class="w-7 h-7"></i>
+                </div>
+                <div class="z-10 truncate">
+                    <p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 truncate">อัตราของเสีย (ชิ้น)</p>
+                    <h3 id="kpiDefectRateQty" class="text-2xl lg:text-3xl font-extrabold text-slate-800">0%</h3>
+                </div>
+            </div>
+
+            <!-- KPI CARD: อัตราของเสีย (น้ำหนัก) - Purple Scale -->
+            <div class="chart-wrapper p-6 flex items-center gap-5 relative overflow-hidden group">
+                <div class="absolute -right-4 -top-4 w-24 h-24 bg-purple-500/10 rounded-full opacity-50 group-hover:scale-110 transition-transform duration-500"></div>
+                <div class="w-14 h-14 bg-gradient-to-br from-purple-400 to-purple-600 text-white rounded-2xl flex items-center justify-center shadow-purple-200 shadow-lg z-10 flex-shrink-0">
+                    <i data-lucide="scale" class="w-7 h-7"></i>
+                </div>
+                <div class="z-10 truncate">
+                    <p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 truncate">อัตราของเสีย (น้ำหนัก)</p>
+                    <h3 id="kpiDefectRateWeight" class="text-2xl lg:text-3xl font-extrabold text-slate-800">0%</h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- NEW SECTION: Output Charts from "out_put" -->
+        <div class="max-w-7xl mx-auto flex items-center gap-3 text-slate-800 font-extrabold text-2xl px-2 mb-6 mt-2 border-b border-slate-200/80 pb-4">
+            <div class="p-2.5 bg-indigo-100 rounded-xl text-indigo-600 shadow-sm"><i data-lucide="bar-chart-3" class="w-7 h-7"></i></div>
+            สรุปผลผลิตและของเสียรายเครื่องจักร (จากชีต out_put)
+        </div>
+
+        <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
+            <!-- 1. Out แยกรายเครื่อง -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-blue-100 rounded-lg text-blue-600"><i data-lucide="package" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ยอดผลิต (Out) แยกรายเครื่อง</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="outMachineChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 2. Out All -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-purple-100 rounded-lg text-purple-600"><i data-lucide="layers" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ยอดผลิตรวม (Out All)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="outAllChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 3. %Waste แยกรายเครื่อง -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-orange-100 rounded-lg text-orange-600"><i data-lucide="percent" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">เปอร์เซ็นต์ของเสีย (%Waste) แยกรายเครื่อง</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="percentWasteMachineChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 4. %Waste All -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-rose-100 rounded-lg text-rose-600"><i data-lucide="pie-chart" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">เปอร์เซ็นต์ของเสียรวม (%Waste All)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="percentWasteAllChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Master Data Section -->
+        <div class="max-w-7xl mx-auto flex items-center gap-3 text-slate-800 font-extrabold text-2xl px-2 mb-6 mt-10 border-b border-slate-200/80 pb-4">
+            <div class="p-2.5 bg-emerald-100 rounded-xl text-emerald-600 shadow-sm"><i data-lucide="file-spreadsheet" class="w-7 h-7"></i></div>
+            วิเคราะห์เชิงลึกและสาเหตุของเสีย (จากชีต MASTER_DATA)
+        </div>
+
+        <!-- Charts Master Data -->
+        <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Daily Trend (Weight NCP Only) -->
+            <div class="chart-wrapper p-6 lg:col-span-2">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-rose-100 rounded-lg text-rose-600"><i data-lucide="trending-up" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">แนวโน้มของเสียรายวัน (กิโลกรัม)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Customer Pass Top 10 -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-emerald-100 rounded-lg text-emerald-600"><i data-lucide="award" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ลูกค้ายอดผลิตสูงสุด (จำนวนชิ้น Top 10)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="customerPassChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Customer NCP Weight Top 10 -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-pink-100 rounded-lg text-pink-600"><i data-lucide="alert-triangle" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ลูกค้าน้ำหนักของเสียสูงสุด (กิโลกรัม Top 10)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="customerNcpWeightChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Lonn Code Chart (Weight) -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-cyan-100 rounded-lg text-cyan-600"><i data-lucide="bar-chart-2" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ลอนโค้ดที่เกิดของเสียสูงสุด (กิโลกรัม Top 10)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="lonnCodeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Reason Bar Chart (Weight) -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-violet-100 rounded-lg text-violet-600"><i data-lucide="help-circle" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">สาเหตุของเสีย (กิโลกรัม Top 10)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="reasonChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Reason Trend Line Chart (Top 3 by Weight over time) -->
+            <div class="chart-wrapper p-6 lg:col-span-2">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-fuchsia-100 rounded-lg text-fuchsia-600"><i data-lucide="trending-down" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">แนวโน้มสาเหตุของเสียสูงสุด 3 อันดับแรก (กิโลกรัม)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="reasonTrendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Customer NCP Table Top 10 (Weight) -->
+            <div class="chart-wrapper p-6 lg:col-span-2">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-slate-100 rounded-lg text-slate-600"><i data-lucide="table-2" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ตารางลูกค้ายอดของเสียสูงสุด และปัญหาที่พบ (Top 10)</h3>
+                </div>
+                <div class="overflow-y-auto max-h-[320px] pr-2 custom-scrollbar">
+                    <table class="min-w-full text-sm text-left text-slate-600 border-collapse">
+                        <thead class="text-xs text-slate-500 uppercase bg-slate-100/50 sticky top-0 shadow-sm z-10 backdrop-blur-md">
+                            <tr>
+                                <th scope="col" class="px-5 py-4 rounded-tl-xl font-bold tracking-wider">อันดับ</th>
+                                <th scope="col" class="px-5 py-4 font-bold tracking-wider">ชื่อลูกค้า</th>
+                                <th scope="col" class="px-5 py-4 w-1/2 font-bold tracking-wider">ปัญหาหลักที่พบ (สาเหตุ)</th>
+                                <th scope="col" class="px-5 py-4 text-right rounded-tr-xl font-bold tracking-wider">NCP (กก.)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customerNcpTableBody">
+                            <!-- JS Will Populate This -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Station Bar Chart (Qty) -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-amber-100 rounded-lg text-amber-600"><i data-lucide="factory" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ยอดของเสียแบ่งตามสถานี (จำนวนชิ้น)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="stationChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Station Bar Chart (Weight) -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-orange-100 rounded-lg text-orange-600"><i data-lucide="scale" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ยอดของเสียแบ่งตามสถานี (กิโลกรัม)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="stationWeightChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Average Speed Chart -->
+            <div class="chart-wrapper p-6 lg:col-span-2">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-blue-100 rounded-lg text-blue-600"><i data-lucide="zap" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ความเร็วที่ผลิตได้เฉลี่ย (AVG Speed M/min)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="speedChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Speed Distribution (Pie & Stats) -->
+            <div class="chart-wrapper p-6 lg:col-span-2 mb-8">
+                <div class="flex items-center gap-2 mb-6 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-teal-100 rounded-lg text-teal-600"><i data-lucide="gauge" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">สัดส่วนรายการผลิตแบ่งตามความเร็ว (Speed)</h3>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
+                    <!-- Stats Text -->
+                    <div class="flex flex-col gap-5">
+                        <div class="p-5 bg-gradient-to-br from-emerald-50 to-teal-50/30 border border-emerald-100/50 rounded-2xl shadow-sm">
+                            <div class="flex items-center gap-2 mb-2">
+                                <div class="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                                <p class="text-sm text-emerald-700 font-bold uppercase tracking-wide">Speed ≥ 100 M/min</p>
+                            </div>
+                            <h4 id="statSpeedHigh" class="text-3xl font-extrabold text-emerald-800">0 <span class="text-sm font-medium text-emerald-600">รายการ</span></h4>
+                        </div>
+                        <div class="p-5 bg-gradient-to-br from-rose-50 to-pink-50/30 border border-rose-100/50 rounded-2xl shadow-sm">
+                            <div class="flex items-center gap-2 mb-2">
+                                <div class="w-3 h-3 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]"></div>
+                                <p class="text-sm text-rose-700 font-bold uppercase tracking-wide">Speed < 100 M/min</p>
+                            </div>
+                            <h4 id="statSpeedLow" class="text-3xl font-extrabold text-rose-800">0 <span class="text-sm font-medium text-rose-600">รายการ</span></h4>
+                        </div>
+                    </div>
+                    
+                    <!-- Pie Chart -->
+                    <div class="md:col-span-2">
+                        <div class="pie-container">
+                            <canvas id="speedDistributionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Constants URLs
+        const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1GoGf7Mtf9_9NAucBBOqX-rK_7z3dxKXVMNM0xyRiGro/gviz/tq?tqx=out:csv&sheet=MASTER_DATA";
+        const SHEET_OUTPUT_URL = "https://docs.google.com/spreadsheets/d/1GoGf7Mtf9_9NAucBBOqX-rK_7z3dxKXVMNM0xyRiGro/gviz/tq?tqx=out:csv&sheet=out_put";
+
+        // Fallbacks if Google Sheets isn't shared properly
+        const FALLBACK_CSV = `#,T,PDR,Order no,Description,Lonn Code,Machine,Customer,M/C Out,Start,Finish,จำนวนครั้งที่หยุด,เวลาที่หยุด,AVG Speed (M/min),Pass Output,NCP,OVER,Total QTY,Net Weight,Reason Code,Reason Description,Station,MC Unit\n1,B,PDE2602-0026,220,46 x 60 KA125/CA105/CA105 B,B,BHS,ห้างหุ้นส่วนจำกัด ทองพัฒนาบรรจุภัณฑ์,12,01/03/2026 21:42,01/03/2026 21:42,0,0,99,11,1,0,12,0.659,NCP001,กระดาษฉีกขาดจากราง CP Roller,STACKER,UT\n2,B,PDE2602-0101,180,60x72 1/8 KS170/CA125/KA230 B,B,BHS,บริษัท กรีนคาร์ตอนบ๊อกซ์ จำกัด,70,01/03/2026 21:24,01/03/2026 21:26,0,0,55,50,2,0,52,1.587,NCP113,รอยต่อ BL,DB,M5\n3,A,PDE2602-0192,1630,40x57 9/16 KI125/CA125/CA125 C,C,ISOWA,บริษัท เอส.เอ.เอส.กรุ๊ป จำกัด,52,02/03/2026 5:18,02/03/2026 5:18,0,0,82,5,26,0,31,0.638,NCP133,รอยเส้น BL,DB,M5\n4,B,PDE2603-0003,80,64x72 1/8 KA185/CA125/KA185 B,B,ISOWA,บริษัท กรีนคาร์ตอนบ๊อกซ์ จำกัด,30,03/03/2026 20:32,03/03/2026 20:33,0,0,93,27,1,0,28,1.6,NCP001,กระดาษฉีกขาดจากราง CP Roller,STACKER,UT`;
+        const FALLBACK_OUTPUT_CSV = `Day of Posting Date,Cons (ISO),Out (ISO),C-O (ISO),% Waste C-O (ISO),Waste (ISO),% Waste (ISO),Cons (BHS),Out (BHS),C-O (BHS),% Waste C-O (BHS),Waste (BHS),% Waste (BHS),Cons (YUE),Out (YUE),C-O (YUE),% Waste C-O (YUE),Waste (YUE),% Waste (YUE),Cons (ALL),Out (ALL),C-O (ALL),% Waste C-O (ALL),WASTE (ALL),% Waste (ALL),DATE\nSat 03/01/26,117,754,108,781,8,973,7.62%,7,810,6.63%,70,860,63,195,7,665,10.82%,6,030,8.51%,192,516,171,976,20,540,10.67%,17,458,9.07%,3/1/2026\nSun 04/01/26,125,420,109,981,15,439,12.31%,13,524,10.78%,176,512,158,951,17,561,9.95%,16,309,9.24%,303,096,268,932,34,164,11.27%,29,461,9.72%,4/1/2026\nMon 05/01/26,31,847,26,791,5,056,15.87%,4,524,14.21%,154,554,141,125,13,429,8.69%,13,562,8.77%,114,039,99,320,14,719,12.91%,13,422,11.77%,301,376,267,237,34,139,11.33%,32,264,10.71%,5/1/2026`;
+
+        // Setup Chart defaults for premium modern look
+        Chart.defaults.font.family = "'Inter', 'Segoe UI', sans-serif";
+        Chart.defaults.font.weight = '600';
+        Chart.defaults.font.size = 13;
+        Chart.defaults.color = '#334155';
+        Chart.defaults.scale.grid.color = 'rgba(226, 232, 240, 0.6)';
+        Chart.defaults.scale.border = { display: false };
+        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15, 23, 42, 0.85)';
+        Chart.defaults.plugins.tooltip.padding = 12;
+        Chart.defaults.plugins.tooltip.cornerRadius = 8;
+        Chart.defaults.plugins.tooltip.titleFont = { size: 14, weight: 'bold' };
+        Chart.defaults.plugins.tooltip.bodyFont = { size: 13 };
+
+        // State Variables
+        let allData = [];
+        let outputDataAll = [];
+
+        // Chart Objects
+        let outMachineChartObj = null;
+        let outAllChartObj = null;
+        let percentWasteMachineChartObj = null;
+        let percentWasteAllChartObj = null;
+
+        let trendChartObj = null;
+        let customerPassChartObj = null;
+        let customerNcpWeightChartObj = null;
+        let reasonChartObj = null;
+        let reasonTrendChartObj = null;
+        let lonnCodeChartObj = null;
+        let stationChartObj = null;
+        let stationWeightChartObj = null;
+        let speedChartObj = null;
+        let speedDistributionChartObj = null;
+
+        // Init Lucide Icons
+        lucide.createIcons();
+
+        // Helper Function for Gradients
+        function createGradient(ctx, colorStart, colorEnd, isHorizontal = false) {
+            const gradient = isHorizontal
+                ? ctx.createLinearGradient(0, 0, 600, 0)
+                : ctx.createLinearGradient(0, 0, 0, 350);
+            gradient.addColorStop(0, colorStart);
+            gradient.addColorStop(1, colorEnd);
+            return gradient;
+        }
+
+        // Screen Capture Function
+        async function captureDashboard() {
+            const captureBtn = document.getElementById('captureBtn');
+            const originalContent = captureBtn.innerHTML;
+            
+            captureBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังแคป...';
+            lucide.createIcons();
+
+            try {
+                const element = document.getElementById('appContent');
+                const canvas = await html2canvas(element, {
+                    scale: 2, 
+                    backgroundColor: '#f1f5f9',
+                    logging: false,
+                    useCORS: true
+                });
+
+                const image = canvas.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.href = image;
+                const today = new Date().toISOString().split('T')[0];
+                link.download = `Production_Dashboard_${today}.png`;
+                link.click();
+            } catch (error) {
+                console.error('Capture failed:', error);
+                alert('เกิดข้อผิดพลาดในการแคปหน้าจอ');
+            } finally {
+                captureBtn.innerHTML = originalContent;
+                lucide.createIcons();
+            }
+        }
+
+        // Utility: CSV Parser
+        function parseCSV(str) {
+            const arr = [];
+            let quote = false;
+            let row = 0, col = 0, c = 0;
+            for (; c < str.length; c++) {
+                let cc = str[c], nc = str[c + 1];
+                arr[row] = arr[row] || [];
+                arr[row][col] = arr[row][col] || '';
+                if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; }
+                if (cc === '"') { quote = !quote; continue; }
+                if (cc === ',' && !quote) { ++col; continue; }
+                if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; }
+                if (cc === '\n' && !quote) { ++row; col = 0; continue; }
+                if (cc === '\r' && !quote) { ++row; col = 0; continue; }
+                arr[row][col] += cc;
+            }
+            return arr;
+        }
+
+        // Utility: Date Parser
+        function parseDateStr(dateStr) {
+            if (!dateStr) return null;
+            dateStr = dateStr.replace(/"/g, '').trim();
+            // ตัดชื่อวันภาษาอังกฤษออก (เช่น Sat, Sunday, Mon)
+            dateStr = dateStr.replace(/^[A-Za-z]{3,10}[,\s]+/, '');
+            
+            const parts = dateStr.split(/[\sT]+/);
+            const dStr = parts[0];
+            let day, month, year;
+
+            if (dStr.includes('-')) {
+                const dateParts = dStr.split('-');
+                if (dateParts[0].length === 4) { // YYYY-MM-DD
+                    year = parseInt(dateParts[0], 10);
+                    month = parseInt(dateParts[1], 10) - 1;
+                    day = parseInt(dateParts[2], 10);
+                } else { // DD-MM-YYYY or DD-MM-YY
+                    day = parseInt(dateParts[0], 10);
+                    month = parseInt(dateParts[1], 10) - 1;
+                    year = parseInt(dateParts[2], 10);
+                }
+            } else if (dStr.includes('/')) {
+                const dateParts = dStr.split('/');
+                if (dateParts[2].length === 4) { // DD/MM/YYYY
+                    day = parseInt(dateParts[0], 10);
+                    month = parseInt(dateParts[1], 10) - 1;
+                    year = parseInt(dateParts[2], 10);
+                } else { // DD/MM/YY
+                    day = parseInt(dateParts[0], 10);
+                    month = parseInt(dateParts[1], 10) - 1;
+                    year = parseInt(dateParts[2], 10);
+                }
+            } else {
+                return null;
+            }
+
+            if (year < 100) year += 2000;
+
+            const d = new Date(year, month, day);
+            return isNaN(d.getTime()) ? null : d;
+        }
+
+        function formatDateLocal(dateObj) {
+            if (!dateObj) return '';
+            const yyyy = dateObj.getFullYear();
+            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const dd = String(dateObj.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        // Utility: Parse Number robustly
+        function parseNum(val) {
+            if(!val) return 0;
+            return parseFloat(val.toString().replace(/"/g, '').replace(/,/g, '').replace('%', '')) || 0;
+        }
+
+        // Quick Date Filters Handlers
+        function setQuickDate(daysBack) {
+            const validDates1 = allData.map(d => d.dateObj).filter(d => d && !isNaN(d.getTime()));
+            const validDates2 = outputDataAll.map(d => d.dateObj).filter(d => d && !isNaN(d.getTime()));
+            const allDates = [...validDates1, ...validDates2];
+            
+            if (allDates.length === 0) return;
+            
+            // ป้องกัน Call Stack Exceeded เมื่อข้อมูลมหาศาล
+            const maxTime = allDates.reduce((max, d) => d.getTime() > max ? d.getTime() : max, allDates[0].getTime());
+            const maxDate = new Date(maxTime);
+            const minDate = new Date(maxDate);
+            minDate.setDate(minDate.getDate() - daysBack + 1);
+            
+            document.getElementById('startDate').value = formatDateLocal(minDate);
+            document.getElementById('endDate').value = formatDateLocal(maxDate);
+            applyFilters();
+        }
+
+        function resetFilters() {
+            const validDates1 = allData.map(d => d.dateObj).filter(d => d && !isNaN(d.getTime()));
+            const validDates2 = outputDataAll.map(d => d.dateObj).filter(d => d && !isNaN(d.getTime()));
+            const allDates = [...validDates1, ...validDates2];
+
+            if (allDates.length > 0) {
+                const minTime = allDates.reduce((min, d) => d.getTime() < min ? d.getTime() : min, allDates[0].getTime());
+                const maxTime = allDates.reduce((max, d) => d.getTime() > max ? d.getTime() : max, allDates[0].getTime());
+                const minDate = new Date(minTime);
+                const maxDate = new Date(maxTime);
+                document.getElementById('startDate').value = formatDateLocal(minDate);
+                document.getElementById('endDate').value = formatDateLocal(maxDate);
+            } else {
+                document.getElementById('startDate').value = '';
+                document.getElementById('endDate').value = '';
+            }
+            document.getElementById('selectedShift').value = 'ALL';
+            document.getElementById('selectedMachine').value = 'ALL';
+            applyFilters();
+        }
+
+        async function fetchData() {
+            document.getElementById('loadingScreen').classList.remove('hidden');
+            document.getElementById('appContent').classList.add('hidden');
+            document.getElementById('fallbackWarning').classList.add('hidden');
+
+            try {
+                // Fetch both sheets parallel
+                const [resMaster, resOutput] = await Promise.all([
+                    fetch(SHEET_CSV_URL),
+                    fetch(SHEET_OUTPUT_URL)
+                ]);
+                
+                if (!resMaster.ok || !resOutput.ok) throw new Error("Network response was not ok");
+                
+                const csvMaster = await resMaster.text();
+                const csvOutput = await resOutput.text();
+                
+                processMasterData(csvMaster);
+                processOutputData(csvOutput);
+                
+            } catch (error) {
+                console.warn("Failed to fetch from Google Sheets, using fallback data:", error);
+                document.getElementById('fallbackWarning').classList.remove('hidden');
+                document.getElementById('fallbackText').innerText = "ไม่สามารถดึงข้อมูลสดจาก Google Sheets ได้โดยตรง (อาจติดสิทธิ์การแชร์) ระบบกำลังแสดงข้อมูลสำรองแทน";
+                
+                processMasterData(FALLBACK_CSV);
+                processOutputData(FALLBACK_OUTPUT_CSV);
+            }
+
+            // Init default date bounds based on combined data
+            const validDates1 = allData.map(d => d.dateObj).filter(d => d && !isNaN(d.getTime()));
+            const validDates2 = outputDataAll.map(d => d.dateObj).filter(d => d && !isNaN(d.getTime()));
+            const allDates = [...validDates1, ...validDates2];
+
+            if (allDates.length > 0) {
+                const minTime = allDates.reduce((min, d) => d.getTime() < min ? d.getTime() : min, allDates[0].getTime());
+                const maxTime = allDates.reduce((max, d) => d.getTime() > max ? d.getTime() : max, allDates[0].getTime());
+                const minDate = new Date(minTime);
+                const maxDate = new Date(maxTime);
+                
+                if(!document.getElementById('startDate').value) {
+                    document.getElementById('startDate').value = formatDateLocal(minDate);
+                }
+                if(!document.getElementById('endDate').value) {
+                    document.getElementById('endDate').value = formatDateLocal(maxDate);
+                }
+            }
+
+            document.getElementById('loadingScreen').classList.add('hidden');
+            document.getElementById('appContent').classList.remove('hidden');
+            
+            applyFilters();
+        }
+
+        // Process MASTER_DATA sheet
+        function processMasterData(csvText) {
+            const parsed = parseCSV(csvText);
+            if(parsed.length === 0) return;
+            const headers = parsed[0];
+            
+            const getColIdxWithFallback = (possibleNames, fallback) => {
+                const normalize = s => s ? s.replace(/"/g, '').toLowerCase().replace(/\s+/g, '') : '';
+                for (let name of possibleNames) {
+                    const normName = normalize(name);
+                    const idx = headers.findIndex(h => normalize(h) === normName);
+                    if (idx !== -1) return idx;
+                }
+                return fallback;
+            };
+            
+            const colIdx = {
+                shift: getColIdxWithFallback(['t', 'shift'], 1),
+                start: getColIdxWithFallback(['start', 'startdate', 'date', 'postingdate'], 9),
+                passOutput: getColIdxWithFallback(['passoutput', 'goodyield', 'pass'], 14),
+                ncp: getColIdxWithFallback(['ncp', 'waste', 'reject'], 15),
+                reason: getColIdxWithFallback(['reasondescription', 'reason', 'defect'], 20),
+                station: getColIdxWithFallback(['station', 'process'], 21),
+                machine: getColIdxWithFallback(['machine', 'mc'], 6),
+                avgSpeed: getColIdxWithFallback(['avgspeed(m/min)', 'avgspeed', 'speed'], 13),
+                customer: getColIdxWithFallback(['customer', 'cust'], 7),
+                lonnCode: getColIdxWithFallback(['lonncode', 'flute'], 5),
+                netWeight: getColIdxWithFallback(['netweight', 'weight'], 18)
+            };
+
+            const formattedData = [];
+            for (let i = 1; i < parsed.length; i++) {
+                const row = parsed[i];
+                if (!row || row.length < 5) continue;
+
+                const startRaw = row[colIdx.start] ? row[colIdx.start].replace(/"/g, '').trim() : '';
+                if(!startRaw) continue;
+                
+                const dateObj = parseDateStr(startRaw);
+                if(!dateObj) continue;
+                
+                const dateString = formatDateLocal(dateObj);
+
+                const shiftVal = row[colIdx.shift]?.replace(/"/g, '').trim().toUpperCase() || '-';
+                const machineVal = colIdx.machine >= 0 ? (row[colIdx.machine]?.replace(/"/g, '').trim().toUpperCase() || 'UNKNOWN') : 'UNKNOWN';
+
+                formattedData.push({
+                    shift: shiftVal,
+                    machine: machineVal,
+                    dateString: dateString,
+                    dateObj: dateObj,
+                    passOutput: colIdx.passOutput >= 0 ? parseNum(row[colIdx.passOutput]) : 0,
+                    ncp: colIdx.ncp >= 0 ? parseNum(row[colIdx.ncp]) : 0,
+                    avgSpeed: colIdx.avgSpeed >= 0 ? parseNum(row[colIdx.avgSpeed]) : 0,
+                    reason: row[colIdx.reason]?.replace(/"/g, '').trim() || 'Unknown',
+                    station: row[colIdx.station]?.replace(/"/g, '').trim() || 'Unknown',
+                    customer: colIdx.customer >= 0 ? (row[colIdx.customer]?.replace(/"/g, '').trim() || 'Unknown Customer') : 'Unknown Customer',
+                    lonnCode: colIdx.lonnCode >= 0 ? (row[colIdx.lonnCode]?.replace(/"/g, '').trim() || 'Unknown') : 'Unknown',
+                    netWeight: colIdx.netWeight >= 0 ? parseNum(row[colIdx.netWeight]) : 0,
+                });
+            }
+
+            allData = formattedData;
+        }
+
+        // Process out_put sheet
+        function processOutputData(csvText) {
+            const parsed = parseCSV(csvText);
+            if(parsed.length === 0) return;
+            const headers = parsed[0];
+            
+            const getOutputCol = (possibleNames, fallbackIdx) => {
+                const normalize = s => s ? s.replace(/"/g, '').toLowerCase().replace(/\s+/g, '') : '';
+                for (let name of possibleNames) {
+                    const normName = normalize(name);
+                    const idx = headers.findIndex(h => normalize(h) === normName);
+                    if (idx !== -1) return idx;
+                }
+                return fallbackIdx;
+            };
+
+            const idxDate = getOutputCol(['date', 'dayofpostingdate'], 25);
+            const idxWasteIso = getOutputCol(['%waste(iso)'], 6);
+            const idxWasteBhs = getOutputCol(['%waste(bhs)'], 12);
+            const idxWasteYue = getOutputCol(['%waste(yue)', '%waste(yueli)'], 18);
+            const idxWasteAll = getOutputCol(['%waste(all)'], 24);
+            
+            const idxOutIso = getOutputCol(['out(iso)'], 2);
+            const idxOutBhs = getOutputCol(['out(bhs)'], 8);
+            const idxOutYue = getOutputCol(['out(yue)', 'out(yueli)'], 14);
+            const idxOutAll = getOutputCol(['out(all)'], 20);
+
+            outputDataAll = [];
+            for (let i = 1; i < parsed.length; i++) {
+                const row = parsed[i];
+                if (!row || row.length < 5) continue;
+                
+                const dateStrRaw = row[idxDate] ? row[idxDate].replace(/"/g, '').trim() : '';
+                if(!dateStrRaw) continue;
+
+                const dateObj = parseDateStr(dateStrRaw);
+                if(!dateObj) continue;
+                const dateString = formatDateLocal(dateObj);
+
+                outputDataAll.push({
+                    dateObj: dateObj,
+                    dateString: dateString,
+                    wasteIso: parseNum(row[idxWasteIso]),
+                    wasteBhs: parseNum(row[idxWasteBhs]),
+                    wasteYue: parseNum(row[idxWasteYue]),
+                    wasteAll: parseNum(row[idxWasteAll]),
+                    outIso: parseNum(row[idxOutIso]),
+                    outBhs: parseNum(row[idxOutBhs]),
+                    outYue: parseNum(row[idxOutYue]),
+                    outAll: parseNum(row[idxOutAll])
+                });
+            }
+            
+            // Sort ascending by date
+            outputDataAll.sort((a,b) => a.dateObj - b.dateObj);
+        }
+
+        function applyFilters() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const selectedShift = document.getElementById('selectedShift').value.toUpperCase();
+            const selectedMachine = document.getElementById('selectedMachine').value.toUpperCase();
+
+            // Filter MASTER_DATA
+            const filteredData = allData.filter(item => {
+                let passDate = true;
+                let passShift = true;
+                let passMachine = true;
+
+                if (startDate && item.dateString) passDate = passDate && (item.dateString >= startDate);
+                if (endDate && item.dateString) passDate = passDate && (item.dateString <= endDate);
+                if (selectedShift !== 'ALL') passShift = item.shift === selectedShift;
+                if (selectedMachine !== 'ALL') passMachine = item.machine === selectedMachine;
+
+                return passDate && passShift && passMachine;
+            });
+
+            // Filter out_put data (Only by Date, since shift/machine are separated by columns)
+            const filteredOutputData = outputDataAll.filter(item => {
+                let passDate = true;
+                if (startDate && item.dateString) passDate = passDate && (item.dateString >= startDate);
+                if (endDate && item.dateString) passDate = passDate && (item.dateString <= endDate);
+                return passDate;
+            });
+
+            updateKPIs(filteredData);
+            // Pass selectedMachine into Output Charts to filter by machine dynamically
+            updateOutputCharts(filteredOutputData, selectedMachine); 
+            updateCharts(filteredData);             
+        }
+
+        function updateKPIs(data) {
+            let totalPass = 0, totalNcp = 0;
+            let totalPassWeight = 0, totalNcpWeight = 0;
+            
+            data.forEach(d => { 
+                totalPass += d.passOutput; 
+                totalNcp += d.ncp; 
+                
+                totalPassWeight += (d.passOutput * d.netWeight);
+                totalNcpWeight += (d.ncp * d.netWeight);
+            });
+            
+            // ปรับสูตรคำนวณอัตราของเสียเป็น (เสีย / (ดี + เสีย)) * 100
+            const defectRateQty = totalPass + totalNcp > 0 ? ((totalNcp / (totalPass + totalNcp)) * 100).toFixed(2) : 0;
+            const defectRateWeight = (totalPassWeight + totalNcpWeight) > 0 ? ((totalNcpWeight / (totalPassWeight + totalNcpWeight)) * 100).toFixed(2) : 0;
+
+            document.getElementById('kpiTotalRows').innerText = data.length.toLocaleString();
+            document.getElementById('kpiTotalPass').innerText = totalPass.toLocaleString();
+            document.getElementById('kpiTotalNcp').innerText = totalNcp.toLocaleString();
+            
+            const kpiTotalNcpWeightElem = document.getElementById('kpiTotalNcpWeight');
+            if(kpiTotalNcpWeightElem) kpiTotalNcpWeightElem.innerText = totalNcpWeight.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+            // อัปเดตอัตราของเสีย (ชิ้น)
+            const kpiQtyElem = document.getElementById('kpiDefectRateQty');
+            if(kpiQtyElem) kpiQtyElem.innerText = defectRateQty + '%';
+            
+            // อัปเดตอัตราของเสีย (น้ำหนัก)
+            const kpiWeightElem = document.getElementById('kpiDefectRateWeight');
+            if(kpiWeightElem) kpiWeightElem.innerText = defectRateWeight + '%';
+        }
+
+        function truncateString(str, num) {
+            if (str.length <= num) return str;
+            return str.slice(0, num) + '...';
+        }
+
+        // ==========================================
+        // NEW Function: Update Output Charts (Now supports Machine Filtering)
+        // ==========================================
+        function updateOutputCharts(data, selectedMachine = 'ALL') {
+            const labels = data.map(d => d.dateString);
+            
+            const outDatasets = [];
+            const wasteDatasets = [];
+
+            // Add dataset ONLY if 'ALL' is selected, or if the specific machine matches
+            if (selectedMachine === 'ALL' || selectedMachine === 'ISOWA') {
+                outDatasets.push({ label: 'ISOWA', data: data.map(d=>d.outIso), backgroundColor: '#3b82f6', borderRadius: 4 });
+                wasteDatasets.push({ label: 'ISOWA', data: data.map(d=>d.wasteIso), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.4, borderWidth: 2, pointRadius: 3 });
+            }
+            if (selectedMachine === 'ALL' || selectedMachine === 'BHS') {
+                outDatasets.push({ label: 'BHS', data: data.map(d=>d.outBhs), backgroundColor: '#10b981', borderRadius: 4 });
+                wasteDatasets.push({ label: 'BHS', data: data.map(d=>d.wasteBhs), borderColor: '#10b981', backgroundColor: '#10b981', tension: 0.4, borderWidth: 2, pointRadius: 3 });
+            }
+            if (selectedMachine === 'ALL' || selectedMachine === 'YUELI') {
+                outDatasets.push({ label: 'YUELI', data: data.map(d=>d.outYue), backgroundColor: '#f59e0b', borderRadius: 4 });
+                wasteDatasets.push({ label: 'YUELI', data: data.map(d=>d.wasteYue), borderColor: '#f59e0b', backgroundColor: '#f59e0b', tension: 0.4, borderWidth: 2, pointRadius: 3 });
+            }
+
+            // 1. Out By Machine (Bar)
+            if(outMachineChartObj) outMachineChartObj.destroy();
+            const ctxOutMac = document.getElementById('outMachineChart').getContext('2d');
+            outMachineChartObj = new Chart(ctxOutMac, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: outDatasets
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${ctx.raw.toLocaleString()}` } } },
+                    scales: { x: { grid: { display: false } }, y: { grid: { borderDash: [4, 4] } } }
+                }
+            });
+
+            // 2. Out All (Bar) - Not filtered by machine (shows overall view)
+            if(outAllChartObj) outAllChartObj.destroy();
+            const ctxOutAll = document.getElementById('outAllChart').getContext('2d');
+            const gradOutAll = createGradient(ctxOutAll, '#8b5cf6', '#6d28d9'); // Purple gradient
+            outAllChartObj = new Chart(ctxOutAll, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Out (All)', data: data.map(d=>d.outAll), backgroundColor: gradOutAll, borderRadius: 6 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ยอดผลิตรวม: ${ctx.raw.toLocaleString()}` } } },
+                    scales: { x: { grid: { display: false } }, y: { grid: { borderDash: [4, 4] } } }
+                }
+            });
+
+            // 3. %Waste By Machine (Line)
+            if(percentWasteMachineChartObj) percentWasteMachineChartObj.destroy();
+            const ctxWasteMac = document.getElementById('percentWasteMachineChart').getContext('2d');
+            percentWasteMachineChartObj = new Chart(ctxWasteMac, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: wasteDatasets
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${ctx.raw}%` } } },
+                    scales: { x: { grid: { display: false } }, y: { grid: { borderDash: [4, 4] }, ticks: { callback: (v)=>v+'%' } } }
+                }
+            });
+
+            // 4. %Waste All (Line + Fill) - Not filtered by machine (shows overall view)
+            if(percentWasteAllChartObj) percentWasteAllChartObj.destroy();
+            const ctxWasteAll = document.getElementById('percentWasteAllChart').getContext('2d');
+            const fillWasteAll = ctxWasteAll.createLinearGradient(0, 0, 0, 300);
+            fillWasteAll.addColorStop(0, 'rgba(244, 63, 94, 0.4)');
+            fillWasteAll.addColorStop(1, 'rgba(244, 63, 94, 0.0)');
+            percentWasteAllChartObj = new Chart(ctxWasteAll, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: '% Waste (All)', data: data.map(d=>d.wasteAll), borderColor: '#f43f5e', backgroundColor: fillWasteAll, fill: true, tension: 0.4, borderWidth: 3, pointRadius: 4, pointBackgroundColor: '#fff', pointBorderColor: '#f43f5e', pointBorderWidth: 2 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` % Waste รวม: ${ctx.raw}%` } } },
+                    scales: { x: { grid: { display: false } }, y: { grid: { borderDash: [4, 4] }, ticks: { callback: (v)=>v+'%' } } }
+                }
+            });
+        }
+
+        // ==========================================
+        // Existing Master Data Charts Update
+        // ==========================================
+        function updateCharts(data) {
+            const trendMap = {};
+            const speedMap = {};
+            const customerPassMap = {};
+            const customerNcpWeightMap = {};
+            const reasonWeightMap = {};
+            const stationWeightMap = {};
+            let speedHighCount = 0;
+            let speedLowCount = 0;
+
+            data.forEach(d => {
+                // สำหรับ Daily Trend
+                if (!trendMap[d.dateString]) trendMap[d.dateString] = { Pass: 0, NCP: 0, PassWeight: 0, NCPWeight: 0 };
+                trendMap[d.dateString].Pass += d.passOutput;
+                trendMap[d.dateString].NCP += d.ncp;
+                trendMap[d.dateString].PassWeight += (d.passOutput * d.netWeight);
+                trendMap[d.dateString].NCPWeight += (d.ncp * d.netWeight);
+
+                if (d.avgSpeed > 0) {
+                    if (!speedMap[d.dateString]) speedMap[d.dateString] = { totalSpeed: 0, count: 0 };
+                    speedMap[d.dateString].totalSpeed += d.avgSpeed;
+                    speedMap[d.dateString].count += 1;
+                    
+                    if (d.avgSpeed >= 100) speedHighCount++;
+                    else speedLowCount++;
+                }
+
+                if (d.passOutput > 0) {
+                    customerPassMap[d.customer] = (customerPassMap[d.customer] || 0) + d.passOutput;
+                }
+
+                if (d.ncp > 0) {
+                    const weight = d.ncp * d.netWeight;
+
+                    if (!customerNcpWeightMap[d.customer]) {
+                        customerNcpWeightMap[d.customer] = { total: 0, reasons: {} };
+                    }
+                    customerNcpWeightMap[d.customer].total += weight;
+                    customerNcpWeightMap[d.customer].reasons[d.reason] = (customerNcpWeightMap[d.customer].reasons[d.reason] || 0) + weight;
+
+                    reasonWeightMap[d.reason] = (reasonWeightMap[d.reason] || 0) + weight;
+                    stationWeightMap[d.station] = (stationWeightMap[d.station] || 0) + weight;
+                }
+            });
+
+            document.getElementById('statSpeedHigh').innerHTML = `${speedHighCount.toLocaleString()} <span class="text-sm font-medium text-emerald-600">รายการ</span>`;
+            document.getElementById('statSpeedLow').innerHTML = `${speedLowCount.toLocaleString()} <span class="text-sm font-medium text-rose-600">รายการ</span>`;
+
+            const trendSorted = Object.keys(trendMap).sort().map(k => ({ date: k, ...trendMap[k] }));
+            const speedSorted = Object.keys(speedMap).sort().map(k => ({
+                date: k,
+                avgSpeed: (speedMap[k].totalSpeed / speedMap[k].count).toFixed(2)
+            }));
+            
+            const customerPassSorted = Object.entries(customerPassMap)
+                .sort((a, b) => b[1] - a[1]).slice(0, 10)
+                .map(item => [truncateString(item[0], 25), item[1]]);
+
+            const customerNcpWeightSorted = Object.entries(customerNcpWeightMap)
+                .sort((a, b) => b[1].total - a[1].total).slice(0, 10)
+                .map(item => [truncateString(item[0], 25), item[1].total]);
+                
+            const customerNcpWeightSortedFull = Object.entries(customerNcpWeightMap)
+                .sort((a, b) => b[1].total - a[1].total).slice(0, 10)
+                .map(item => {
+                    const sortedReasons = Object.entries(item[1].reasons)
+                        .sort((rA, rB) => rB[1] - rA[1])
+                        .map(r => r[0]);
+                    
+                    const plainTextReasons = sortedReasons.join(', ');
+                    let htmlReasons = '';
+                    if (sortedReasons.length > 0) {
+                        htmlReasons = `<span class="text-rose-600 font-bold">${sortedReasons[0]}</span>`;
+                        if (sortedReasons.length > 1) {
+                            htmlReasons += ', ' + sortedReasons.slice(1).join(', ');
+                        }
+                    }
+                    return [item[0], item[1].total, htmlReasons, plainTextReasons];
+                });
+
+            const reasonWeightSorted = Object.entries(reasonWeightMap).sort((a, b) => b[1] - a[1]);
+
+            // Top 3 reasons
+            const top3Reasons = reasonWeightSorted.slice(0, 3).map(d => d[0]);
+            const reasonTrendMap = {};
+            
+            Object.keys(trendMap).forEach(date => {
+                reasonTrendMap[date] = {};
+                top3Reasons.forEach(r => reasonTrendMap[date][r] = 0);
+            });
+
+            data.forEach(d => {
+                if (d.ncp > 0 && top3Reasons.includes(d.reason)) {
+                    reasonTrendMap[d.dateString][d.reason] += (d.ncp * d.netWeight);
+                }
+            });
+
+            const lonnCodeMap = {};
+            data.forEach(d => { if (d.ncp > 0) lonnCodeMap[d.lonnCode] = (lonnCodeMap[d.lonnCode] || 0) + (d.ncp * d.netWeight); }); 
+            const lonnCodeSorted = Object.entries(lonnCodeMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+            const stationMap = {};
+            data.forEach(d => { if (d.ncp > 0) stationMap[d.station] = (stationMap[d.station] || 0) + d.ncp; });
+            const stationSorted = Object.entries(stationMap).sort((a, b) => b[1] - a[1]);
+
+            const stationWeightSorted = Object.entries(stationWeightMap).sort((a, b) => b[1] - a[1]);
+
+            // Trend Chart (Line)
+            if (trendChartObj) trendChartObj.destroy();
+            const ctxTrend = document.getElementById('trendChart').getContext('2d');
+            const ncpGradient = createGradient(ctxTrend, '#fb7185', '#e11d48'); 
+            const ncpFillGradient = ctxTrend.createLinearGradient(0, 0, 0, 300);
+            ncpFillGradient.addColorStop(0, 'rgba(244, 63, 94, 0.4)');
+            ncpFillGradient.addColorStop(1, 'rgba(244, 63, 94, 0.0)');
+            
+            const firstOfMonthPlugin = {
+                id: 'firstOfMonthLine',
+                beforeDraw: (chart) => {
+                    try {
+                        const { ctx, chartArea, scales: { x } } = chart;
+                        // ป้องกัน Error หากกราฟยังโหลดไม่สมบูรณ์
+                        if (!chartArea || !x || !chart.data.labels) return;
+                        
+                        const { top, bottom } = chartArea;
+                        ctx.save();
+                        ctx.strokeStyle = 'rgba(148, 163, 184, 0.8)'; // slate-400
+                        ctx.lineWidth = 1.5;
+                        ctx.setLineDash([5, 5]);
+
+                        x.ticks.forEach((tick, index) => {
+                            // ดึงค่า label อย่างปลอดภัยตามโครงสร้าง Chart.js v4+
+                            const labelIdx = tick.value !== undefined ? tick.value : index;
+                            const label = chart.data.labels[labelIdx];
+                            
+                            if (label && typeof label === 'string' && label.endsWith('-01')) {
+                                const xPos = x.getPixelForTick(index);
+                                ctx.beginPath();
+                                ctx.moveTo(xPos, top);
+                                ctx.lineTo(xPos, bottom);
+                                ctx.stroke();
+                            }
+                        });
+                        ctx.restore();
+                    } catch (err) {
+                        console.error('Error drawing firstOfMonthLine:', err);
+                    }
+                }
+            };
+
+            trendChartObj = new Chart(ctxTrend, {
+                type: 'line',
+                data: {
+                    labels: trendSorted.map(d => d.date),
+                    datasets: [
+                        { 
+                            label: 'ของเสีย (กก.)', 
+                            data: trendSorted.map(d => d.NCPWeight.toFixed(2)), 
+                            borderColor: ncpGradient, 
+                            backgroundColor: ncpFillGradient, 
+                            fill: true,
+                            yAxisID: 'y', 
+                            tension: 0.4, 
+                            borderWidth: 3, 
+                            pointBackgroundColor: '#fff', 
+                            pointBorderColor: '#e11d48', 
+                            pointBorderWidth: 2, 
+                            pointRadius: 4, 
+                            pointHoverRadius: 6 
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { type: 'linear', display: true, position: 'left', grid: { borderDash: [4, 4] } }
+                    }
+                },
+                plugins: [firstOfMonthPlugin]
+            });
+
+            // Customer Pass Chart
+            if (customerPassChartObj) customerPassChartObj.destroy();
+            const ctxCustomerPass = document.getElementById('customerPassChart').getContext('2d');
+            const custPassGradient = createGradient(ctxCustomerPass, '#34d399', '#059669', true); 
+            
+            customerPassChartObj = new Chart(ctxCustomerPass, {
+                type: 'bar',
+                data: {
+                    labels: customerPassSorted.map(d => d[0]),
+                    datasets: [{ label: 'ยอดผลิตผ่าน (Pass)', data: customerPassSorted.map(d => d[1]), backgroundColor: custPassGradient, borderRadius: 6, borderSkipped: false }]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { grid: { borderDash: [4, 4] } }, y: { grid: { display: false } } }
+                }
+            });
+
+            // Customer NCP Weight Chart
+            if (customerNcpWeightChartObj) customerNcpWeightChartObj.destroy();
+            const ctxCustomerNcpWeight = document.getElementById('customerNcpWeightChart').getContext('2d');
+            const custNcpWeightGradient = createGradient(ctxCustomerNcpWeight, '#f43f5e', '#e11d48', true);
+            
+            customerNcpWeightChartObj = new Chart(ctxCustomerNcpWeight, {
+                type: 'bar',
+                data: {
+                    labels: customerNcpWeightSorted.map(d => d[0]),
+                    datasets: [{ label: 'น้ำหนักของเสีย (กก.)', data: customerNcpWeightSorted.map(d => d[1].toFixed(2)), backgroundColor: custNcpWeightGradient, borderRadius: 6, borderSkipped: false }]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { grid: { borderDash: [4, 4] } }, y: { grid: { display: false } } }
+                }
+            });
+
+            // Lonn Code Chart
+            if (lonnCodeChartObj) lonnCodeChartObj.destroy();
+            const ctxLonnCode = document.getElementById('lonnCodeChart').getContext('2d');
+            const lonnCodeGradient = createGradient(ctxLonnCode, '#06b6d4', '#0891b2', true);
+            
+            lonnCodeChartObj = new Chart(ctxLonnCode, {
+                type: 'bar',
+                data: {
+                    labels: lonnCodeSorted.map(d => d[0]),
+                    datasets: [{ label: 'น้ำหนักของเสีย (กก.)', data: lonnCodeSorted.map(d => d[1].toFixed(2)), backgroundColor: lonnCodeGradient, borderRadius: 6, borderSkipped: false }]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { grid: { borderDash: [4, 4] } }, y: { grid: { display: false } } }
+                }
+            });
+
+            // Reason Chart 
+            if (reasonChartObj) reasonChartObj.destroy();
+            const ctxReason = document.getElementById('reasonChart').getContext('2d');
+            const reasonGradient = createGradient(ctxReason, '#a855f7', '#6d28d9', true);
+            
+            reasonChartObj = new Chart(ctxReason, {
+                type: 'bar',
+                data: {
+                    labels: reasonWeightSorted.slice(0, 10).map(d => d[0]),
+                    datasets: [{ label: 'น้ำหนักของเสีย (กก.)', data: reasonWeightSorted.slice(0, 10).map(d => d[1].toFixed(2)), backgroundColor: reasonGradient, borderRadius: 6, borderSkipped: false }]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { grid: { borderDash: [4, 4] } }, y: { grid: { display: false } } }
+                }
+            });
+
+            // Reason Trend Chart (Top 3)
+            if (reasonTrendChartObj) reasonTrendChartObj.destroy();
+            const ctxReasonTrend = document.getElementById('reasonTrendChart').getContext('2d');
+            
+            const lineColors = ['#f43f5e', '#8b5cf6', '#0ea5e9'];
+            const trendLabels = Object.keys(trendMap).sort();
+            
+            const datasetsTrend = top3Reasons.map((reason, i) => {
+                return {
+                    label: truncateString(reason, 20),
+                    data: trendLabels.map(date => reasonTrendMap[date][reason].toFixed(2)),
+                    borderColor: lineColors[i],
+                    backgroundColor: lineColors[i],
+                    tension: 0.4,
+                    borderWidth: 2,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: lineColors[i],
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                };
+            });
+
+            reasonTrendChartObj = new Chart(ctxReasonTrend, {
+                type: 'line',
+                data: {
+                    labels: trendLabels,
+                    datasets: datasetsTrend
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { 
+                        legend: { position: 'top', labels: { boxWidth: 12, usePointStyle: true } }
+                    },
+                    scales: { 
+                        x: { grid: { display: false } }, 
+                        y: { beginAtZero: true, grid: { borderDash: [4, 4] } } 
+                    }
+                }
+            });
+
+            // Render Customer NCP Table
+            const customerNcpTableBody = document.getElementById('customerNcpTableBody');
+            if (customerNcpTableBody) {
+                customerNcpTableBody.innerHTML = '';
+                if (customerNcpWeightSortedFull.length === 0) {
+                    customerNcpTableBody.innerHTML = '<tr><td colspan="4" class="px-5 py-6 text-center text-slate-400 font-medium">ไม่พบข้อมูล</td></tr>';
+                } else {
+                    customerNcpWeightSortedFull.forEach((item, index) => {
+                        const tr = document.createElement('tr');
+                        tr.className = 'border-b border-slate-200/50 hover:bg-slate-50/50 transition-colors group';
+                        
+                        let rankColor = 'text-slate-500';
+                        if (index === 0) rankColor = 'text-amber-500 font-bold bg-amber-50 rounded-full px-2 py-0.5 shadow-sm';
+                        else if (index === 1) rankColor = 'text-slate-600 font-bold bg-slate-200 rounded-full px-2 py-0.5 shadow-sm';
+                        else if (index === 2) rankColor = 'text-orange-500 font-bold bg-orange-50 rounded-full px-2 py-0.5 shadow-sm';
+
+                        tr.innerHTML = `
+                            <td class="px-5 py-3.5"><span class="${rankColor}">${index + 1}</span></td>
+                            <td class="px-5 py-3.5 font-semibold text-slate-700 max-w-[150px] truncate" title="${item[0]}">${item[0]}</td>
+                            <td class="px-5 py-3.5 text-slate-500 truncate max-w-[200px]" title="${item[3]}">${item[2]}</td>
+                            <td class="px-5 py-3.5 text-right font-extrabold text-rose-500 group-hover:text-rose-600 transition-colors">${item[1].toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                        `;
+                        customerNcpTableBody.appendChild(tr);
+                    });
+                }
+            }
+
+            // Station Chart (Qty)
+            if (stationChartObj) stationChartObj.destroy();
+            const ctxStation = document.getElementById('stationChart').getContext('2d');
+            const stationGradient = createGradient(ctxStation, '#fbbf24', '#d97706', true); 
+            
+            stationChartObj = new Chart(ctxStation, {
+                type: 'bar',
+                data: {
+                    labels: stationSorted.map(d => d[0]),
+                    datasets: [{ label: 'ของเสีย (ชิ้น)', data: stationSorted.map(d => d[1]), backgroundColor: stationGradient, borderRadius: 6, borderSkipped: false }]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { grid: { borderDash: [4, 4] } }, y: { grid: { display: false } } }
+                }
+            });
+
+            // Station Chart (Weight)
+            if (stationWeightChartObj) stationWeightChartObj.destroy();
+            const ctxStationWeight = document.getElementById('stationWeightChart').getContext('2d');
+            const stationWeightGradient = createGradient(ctxStationWeight, '#f97316', '#c2410c', true);
+            
+            stationWeightChartObj = new Chart(ctxStationWeight, {
+                type: 'bar',
+                data: {
+                    labels: stationWeightSorted.map(d => d[0]),
+                    datasets: [{ label: 'น้ำหนักของเสีย (กก.)', data: stationWeightSorted.map(d => d[1].toFixed(2)), backgroundColor: stationWeightGradient, borderRadius: 6, borderSkipped: false }]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { grid: { borderDash: [4, 4] } }, y: { grid: { display: false } } }
+                }
+            });
+
+            // Average Speed Chart
+            if (speedChartObj) speedChartObj.destroy();
+            const ctxSpeed = document.getElementById('speedChart').getContext('2d');
+            const speedLineGradient = createGradient(ctxSpeed, '#60a5fa', '#2563eb'); 
+            
+            const speedFillGradient = ctxSpeed.createLinearGradient(0, 0, 0, 300);
+            speedFillGradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
+            speedFillGradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+
+            speedChartObj = new Chart(ctxSpeed, {
+                type: 'line',
+                data: {
+                    labels: speedSorted.map(d => d.date),
+                    datasets: [{ 
+                        label: 'ความเร็วเฉลี่ย (M/min)', 
+                        data: speedSorted.map(d => d.avgSpeed), 
+                        borderColor: speedLineGradient,
+                        backgroundColor: speedFillGradient,
+                        fill: true,
+                        tension: 0.4, 
+                        borderWidth: 3,
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: '#3b82f6',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { beginAtZero: false, grid: { borderDash: [4, 4] } }
+                    }
+                }
+            });
+
+            // Speed Distribution
+            if (speedDistributionChartObj) speedDistributionChartObj.destroy();
+            const ctxSpeedDist = document.getElementById('speedDistributionChart').getContext('2d');
+            
+            if (speedHighCount > 0 || speedLowCount > 0) {
+                const pieHighGradient = createGradient(ctxSpeedDist, '#34d399', '#059669'); 
+                const pieLowGradient = createGradient(ctxSpeedDist, '#fb7185', '#e11d48'); 
+
+                speedDistributionChartObj = new Chart(ctxSpeedDist, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Speed ≥ 100', 'Speed < 100'],
+                        datasets: [{
+                            data: [speedHighCount, speedLowCount],
+                            backgroundColor: [pieHighGradient, pieLowGradient],
+                            borderWidth: 0,
+                            hoverOffset: 8
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '70%',
+                        plugins: {
+                            legend: { position: 'right', labels: { usePointStyle: true, padding: 20 } },
+                            tooltip: {
+                                callbacks: { label: function(context) { return ' ' + context.label + ': ' + context.raw + ' รายการ'; } }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Add Event Listeners to Filters
+        document.getElementById('startDate').addEventListener('change', applyFilters);
+        document.getElementById('endDate').addEventListener('change', applyFilters);
+        document.getElementById('selectedShift').addEventListener('change', applyFilters);
+        document.getElementById('selectedMachine').addEventListener('change', applyFilters);
+
+        // Start App
+        window.onload = fetchData;
+    </script>
+</body>
+</html>
