@@ -291,11 +291,22 @@
                 </div>
             </div>
 
-            <!-- Customer Pass Top 10 -->
+            <!-- NEW: Customer Pass Top 10 (QTY) -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-teal-100 rounded-lg text-teal-600"><i data-lucide="award" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ลูกค้ายอดผลิตสูงสุด (จำนวนชิ้น Top 10)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="customerPassQtyChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Customer Pass Top 10 (CHANGED TO WEIGHT) -->
             <div class="chart-wrapper p-6">
                 <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
                     <div class="p-1.5 bg-emerald-100 rounded-lg text-emerald-600"><i data-lucide="award" class="w-4 h-4"></i></div>
-                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ลูกค้ายอดผลิตสูงสุด (จำนวนชิ้น Top 10)</h3>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ลูกค้ายอดผลิตสูงสุด (กิโลกรัม Top 10)</h3>
                 </div>
                 <div class="chart-container">
                     <canvas id="customerPassChart"></canvas>
@@ -313,6 +324,28 @@
                 </div>
             </div>
 
+            <!-- NEW: Customer Pass Percent Chart -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-indigo-100 rounded-lg text-indigo-600"><i data-lucide="percent" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">อัตราของเสีย: 10 อันดับลูกค้ายอดผลิตสูงสุด (%)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="customerPassPercentChart"></canvas>
+                </div>
+            </div>
+
+            <!-- NEW: Customer NCP Percent Chart -->
+            <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-orange-100 rounded-lg text-orange-600"><i data-lucide="percent" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">อัตราของเสีย: 10 อันดับลูกค้ายอดของเสียสูงสุด (%)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="customerNcpPercentChart"></canvas>
+                </div>
+            </div>
+
             <!-- Lonn Code Chart (Weight) -->
             <div class="chart-wrapper p-6">
                 <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
@@ -325,7 +358,7 @@
             </div>
 
             <!-- Reason Bar Chart (Weight) -->
-            <div class="chart-wrapper p-6">
+            <div class="chart-wrapper p-6 lg:col-span-2">
                 <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
                     <div class="p-1.5 bg-violet-100 rounded-lg text-violet-600"><i data-lucide="help-circle" class="w-4 h-4"></i></div>
                     <h3 class="text-lg font-bold text-slate-800 tracking-tight">สาเหตุของเสีย (กิโลกรัม Top 10)</h3>
@@ -473,8 +506,11 @@
         let percentWasteAllChartObj = null;
 
         let trendChartObj = null;
+        let customerPassQtyChartObj = null;
         let customerPassChartObj = null;
         let customerNcpWeightChartObj = null;
+        let customerPassPercentChartObj = null;
+        let customerNcpPercentChartObj = null;
         let reasonChartObj = null;
         let reasonTrendChartObj = null;
         let lonnCodeChartObj = null;
@@ -504,6 +540,14 @@
             captureBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังแคป...';
             lucide.createIcons();
 
+            // ลบ effect blur ชั่วคราวก่อนจับภาพเพื่อให้ html2canvas ทำงานได้เนียนขึ้น
+            const chartWrappers = document.querySelectorAll('.chart-wrapper');
+            chartWrappers.forEach(el => {
+                el.style.backdropFilter = 'none';
+                el.style.webkitBackdropFilter = 'none';
+                el.style.backgroundColor = '#ffffff';
+            });
+
             try {
                 const element = document.getElementById('appContent');
                 const canvas = await html2canvas(element, {
@@ -523,6 +567,13 @@
                 console.error('Capture failed:', error);
                 alert('เกิดข้อผิดพลาดในการแคปหน้าจอ');
             } finally {
+                // คืนค่า effect blur กลับมา
+                chartWrappers.forEach(el => {
+                    el.style.backdropFilter = '';
+                    el.style.webkitBackdropFilter = '';
+                    el.style.backgroundColor = '';
+                });
+
                 captureBtn.innerHTML = originalContent;
                 lucide.createIcons();
             }
@@ -613,7 +664,6 @@
             
             if (allDates.length === 0) return;
             
-            // ป้องกัน Call Stack Exceeded เมื่อข้อมูลมหาศาล
             const maxTime = allDates.reduce((max, d) => d.getTime() > max ? d.getTime() : max, allDates[0].getTime());
             const maxDate = new Date(maxTime);
             const minDate = new Date(maxDate);
@@ -651,10 +701,11 @@
             document.getElementById('fallbackWarning').classList.add('hidden');
 
             try {
-                // Fetch both sheets parallel
+                // เพิ่ม Timestamp เพื่อหลีกเลี่ยงระบบ Cache ของ Google Sheets ให้ข้อมูลอัปเดตเสมอ
+                const noCache = new Date().getTime();
                 const [resMaster, resOutput] = await Promise.all([
-                    fetch(SHEET_CSV_URL),
-                    fetch(SHEET_OUTPUT_URL)
+                    fetch(`${SHEET_CSV_URL}&_=${noCache}`),
+                    fetch(`${SHEET_OUTPUT_URL}&_=${noCache}`)
                 ]);
                 
                 if (!resMaster.ok || !resOutput.ok) throw new Error("Network response was not ok");
@@ -852,7 +903,7 @@
             updateKPIs(filteredData);
             // Pass selectedMachine into Output Charts to filter by machine dynamically
             updateOutputCharts(filteredOutputData, selectedMachine); 
-            updateCharts(filteredData);             
+            updateCharts(filteredData);              
         }
 
         function updateKPIs(data) {
@@ -893,7 +944,7 @@
         }
 
         // ==========================================
-        // NEW Function: Update Output Charts (Now supports Machine Filtering)
+        // Output Charts (Now supports Machine Filtering)
         // ==========================================
         function updateOutputCharts(data, selectedMachine = 'ALL') {
             const labels = data.map(d => d.dateString);
@@ -998,7 +1049,8 @@
         function updateCharts(data) {
             const trendMap = {};
             const speedMap = {};
-            const customerPassMap = {};
+            const customerPassQtyMap = {};
+            const customerPassMap = {}; // Will now store weight instead of quantity
             const customerNcpWeightMap = {};
             const reasonWeightMap = {};
             const stationWeightMap = {};
@@ -1022,8 +1074,10 @@
                     else speedLowCount++;
                 }
 
+                // CHANGED: คำนวณยอด Pass สูงสุดของลูกค้า ให้เป็นน้ำหนัก (กิโลกรัม) และเก็บจำนวนชิ้นด้วย
                 if (d.passOutput > 0) {
-                    customerPassMap[d.customer] = (customerPassMap[d.customer] || 0) + d.passOutput;
+                    customerPassQtyMap[d.customer] = (customerPassQtyMap[d.customer] || 0) + d.passOutput;
+                    customerPassMap[d.customer] = (customerPassMap[d.customer] || 0) + (d.passOutput * d.netWeight);
                 }
 
                 if (d.ncp > 0) {
@@ -1049,6 +1103,10 @@
                 avgSpeed: (speedMap[k].totalSpeed / speedMap[k].count).toFixed(2)
             }));
             
+            const customerPassQtySorted = Object.entries(customerPassQtyMap)
+                .sort((a, b) => b[1] - a[1]).slice(0, 10)
+                .map(item => [truncateString(item[0], 25), item[1]]);
+
             const customerPassSorted = Object.entries(customerPassMap)
                 .sort((a, b) => b[1] - a[1]).slice(0, 10)
                 .map(item => [truncateString(item[0], 25), item[1]]);
@@ -1057,7 +1115,7 @@
                 .sort((a, b) => b[1].total - a[1].total).slice(0, 10)
                 .map(item => [truncateString(item[0], 25), item[1].total]);
                 
-            const customerNcpWeightSortedFull = Object.entries(customerNcpWeightMap)
+                const customerNcpWeightSortedFull = Object.entries(customerNcpWeightMap)
                 .sort((a, b) => b[1].total - a[1].total).slice(0, 10)
                 .map(item => {
                     const sortedReasons = Object.entries(item[1].reasons)
@@ -1074,6 +1132,32 @@
                     }
                     return [item[0], item[1].total, htmlReasons, plainTextReasons];
                 });
+
+            // NEW: Calculate Percentages for Top 10 Pass Customers
+            const top10PassRaw = Object.entries(customerPassMap)
+                .sort((a,b) => b[1] - a[1])
+                .slice(0, 10);
+                
+            const top10PassPercentData = top10PassRaw.map(item => {
+                const cust = item[0];
+                const passW = item[1];
+                const ncpW = customerNcpWeightMap[cust] ? customerNcpWeightMap[cust].total : 0;
+                const pct = (passW + ncpW) > 0 ? (ncpW / (passW + ncpW)) * 100 : 0;
+                return [truncateString(cust, 25), pct];
+            });
+
+            // NEW: Calculate Percentages for Top 10 NCP Customers
+            const top10NcpRaw = Object.entries(customerNcpWeightMap)
+                .sort((a,b) => b[1].total - a[1].total)
+                .slice(0, 10);
+                
+            const top10NcpPercentData = top10NcpRaw.map(item => {
+                const cust = item[0];
+                const ncpW = item[1].total;
+                const passW = customerPassMap[cust] || 0;
+                const pct = (passW + ncpW) > 0 ? (ncpW / (passW + ncpW)) * 100 : 0;
+                return [truncateString(cust, 25), pct];
+            });
 
             const reasonWeightSorted = Object.entries(reasonWeightMap).sort((a, b) => b[1] - a[1]);
 
@@ -1115,7 +1199,6 @@
                 beforeDraw: (chart) => {
                     try {
                         const { ctx, chartArea, scales: { x } } = chart;
-                        // ป้องกัน Error หากกราฟยังโหลดไม่สมบูรณ์
                         if (!chartArea || !x || !chart.data.labels) return;
                         
                         const { top, bottom } = chartArea;
@@ -1125,7 +1208,6 @@
                         ctx.setLineDash([5, 5]);
 
                         x.ticks.forEach((tick, index) => {
-                            // ดึงค่า label อย่างปลอดภัยตามโครงสร้าง Chart.js v4+
                             const labelIdx = tick.value !== undefined ? tick.value : index;
                             const label = chart.data.labels[labelIdx];
                             
@@ -1171,22 +1253,28 @@
                     interaction: { mode: 'index', intersect: false },
                     scales: {
                         x: { grid: { display: false } },
-                        y: { type: 'linear', display: true, position: 'left', grid: { borderDash: [4, 4] } }
+                        y: { type: 'linear', display: true, position: 'left', beginAtZero: true, grid: { borderDash: [4, 4] } }
                     }
                 },
                 plugins: [firstOfMonthPlugin]
             });
 
-            // Customer Pass Chart
-            if (customerPassChartObj) customerPassChartObj.destroy();
-            const ctxCustomerPass = document.getElementById('customerPassChart').getContext('2d');
-            const custPassGradient = createGradient(ctxCustomerPass, '#34d399', '#059669', true); 
+            // NEW: Customer Pass Chart (QTY)
+            if (customerPassQtyChartObj) customerPassQtyChartObj.destroy();
+            const ctxCustomerPassQty = document.getElementById('customerPassQtyChart').getContext('2d');
+            const custPassQtyGradient = createGradient(ctxCustomerPassQty, '#2dd4bf', '#0f766e', true); 
             
-            customerPassChartObj = new Chart(ctxCustomerPass, {
+            customerPassQtyChartObj = new Chart(ctxCustomerPassQty, {
                 type: 'bar',
                 data: {
-                    labels: customerPassSorted.map(d => d[0]),
-                    datasets: [{ label: 'ยอดผลิตผ่าน (Pass)', data: customerPassSorted.map(d => d[1]), backgroundColor: custPassGradient, borderRadius: 6, borderSkipped: false }]
+                    labels: customerPassQtySorted.map(d => d[0]),
+                    datasets: [{ 
+                        label: 'ยอดผลิตผ่าน (ชิ้น)', 
+                        data: customerPassQtySorted.map(d => d[1]), 
+                        backgroundColor: custPassQtyGradient, 
+                        borderRadius: 6, 
+                        borderSkipped: false 
+                    }]
                 },
                 options: {
                     indexAxis: 'y', responsive: true, maintainAspectRatio: false,
@@ -1195,7 +1283,31 @@
                 }
             });
 
-            // Customer NCP Weight Chart
+            // Customer Pass Chart (NOW WEIGHT BASED)
+            if (customerPassChartObj) customerPassChartObj.destroy();
+            const ctxCustomerPass = document.getElementById('customerPassChart').getContext('2d');
+            const custPassGradient = createGradient(ctxCustomerPass, '#34d399', '#059669', true); 
+            
+            customerPassChartObj = new Chart(ctxCustomerPass, {
+                type: 'bar',
+                data: {
+                    labels: customerPassSorted.map(d => d[0]),
+                    datasets: [{ 
+                        label: 'ยอดผลิตผ่าน (กก.)', 
+                        data: customerPassSorted.map(d => d[1].toFixed(2)), 
+                        backgroundColor: custPassGradient, 
+                        borderRadius: 6, 
+                        borderSkipped: false 
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { grid: { borderDash: [4, 4] } }, y: { grid: { display: false } } }
+                }
+            });
+
+            // Customer NCP Weight Chart (ฟื้นฟูกราฟที่หายไป)
             if (customerNcpWeightChartObj) customerNcpWeightChartObj.destroy();
             const ctxCustomerNcpWeight = document.getElementById('customerNcpWeightChart').getContext('2d');
             const custNcpWeightGradient = createGradient(ctxCustomerNcpWeight, '#f43f5e', '#e11d48', true);
@@ -1210,6 +1322,72 @@
                     indexAxis: 'y', responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: { x: { grid: { borderDash: [4, 4] } }, y: { grid: { display: false } } }
+                }
+            });
+
+            // NEW: Customer Pass Percent Chart
+            if (customerPassPercentChartObj) customerPassPercentChartObj.destroy();
+            const ctxCustPassPct = document.getElementById('customerPassPercentChart').getContext('2d');
+            const passPctGradient = createGradient(ctxCustPassPct, '#818cf8', '#4f46e5', true); 
+            
+            customerPassPercentChartObj = new Chart(ctxCustPassPct, {
+                type: 'bar',
+                data: {
+                    labels: top10PassPercentData.map(d => d[0]),
+                    datasets: [{ 
+                        label: 'อัตราของเสีย (%)', 
+                        data: top10PassPercentData.map(d => d[1].toFixed(2)), 
+                        backgroundColor: passPctGradient, 
+                        borderRadius: 6, 
+                        borderSkipped: false 
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx) => ` อัตราของเสีย: ${ctx.raw}%` } }
+                    },
+                    scales: { 
+                        x: { 
+                            grid: { borderDash: [4, 4] },
+                            ticks: { callback: function(value) { return value + '%'; } }
+                        }, 
+                        y: { grid: { display: false } } 
+                    }
+                }
+            });
+
+            // NEW: Customer NCP Percent Chart
+            if (customerNcpPercentChartObj) customerNcpPercentChartObj.destroy();
+            const ctxCustNcpPct = document.getElementById('customerNcpPercentChart').getContext('2d');
+            const ncpPctGradient = createGradient(ctxCustNcpPct, '#fb923c', '#ea580c', true);
+            
+            customerNcpPercentChartObj = new Chart(ctxCustNcpPct, {
+                type: 'bar',
+                data: {
+                    labels: top10NcpPercentData.map(d => d[0]),
+                    datasets: [{ 
+                        label: 'อัตราของเสีย (%)', 
+                        data: top10NcpPercentData.map(d => d[1].toFixed(2)), 
+                        backgroundColor: ncpPctGradient, 
+                        borderRadius: 6, 
+                        borderSkipped: false 
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx) => ` อัตราของเสีย: ${ctx.raw}%` } }
+                    },
+                    scales: { 
+                        x: { 
+                            grid: { borderDash: [4, 4] },
+                            ticks: { callback: function(value) { return value + '%'; } }
+                        }, 
+                        y: { grid: { display: false } } 
+                    }
                 }
             });
 
