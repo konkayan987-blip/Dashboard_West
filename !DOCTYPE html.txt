@@ -324,8 +324,19 @@
                 </div>
             </div>
 
-            <!-- NEW: Customer Pass Percent Chart -->
+            <!-- Lonn Code Chart (Weight) MOVED HERE -->
             <div class="chart-wrapper p-6">
+                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
+                    <div class="p-1.5 bg-cyan-100 rounded-lg text-cyan-600"><i data-lucide="bar-chart-2" class="w-4 h-4"></i></div>
+                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ลอนโค้ดที่เกิดของเสียสูงสุด (กิโลกรัม Top 10)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="lonnCodeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- NEW: Customer Pass Percent Chart -->
+            <div class="chart-wrapper p-6 lg:col-span-2">
                 <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
                     <div class="p-1.5 bg-indigo-100 rounded-lg text-indigo-600"><i data-lucide="percent" class="w-4 h-4"></i></div>
                     <h3 class="text-lg font-bold text-slate-800 tracking-tight">อัตราของเสีย: 10 อันดับลูกค้ายอดผลิตสูงสุด (%)</h3>
@@ -336,24 +347,13 @@
             </div>
 
             <!-- NEW: Customer NCP Percent Chart -->
-            <div class="chart-wrapper p-6">
+            <div class="chart-wrapper p-6 lg:col-span-2">
                 <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
                     <div class="p-1.5 bg-orange-100 rounded-lg text-orange-600"><i data-lucide="percent" class="w-4 h-4"></i></div>
                     <h3 class="text-lg font-bold text-slate-800 tracking-tight">อัตราของเสีย: 10 อันดับลูกค้ายอดของเสียสูงสุด (%)</h3>
                 </div>
                 <div class="chart-container">
                     <canvas id="customerNcpPercentChart"></canvas>
-                </div>
-            </div>
-
-            <!-- Lonn Code Chart (Weight) -->
-            <div class="chart-wrapper p-6">
-                <div class="flex items-center gap-2 mb-4 border-b border-slate-200/50 pb-3">
-                    <div class="p-1.5 bg-cyan-100 rounded-lg text-cyan-600"><i data-lucide="bar-chart-2" class="w-4 h-4"></i></div>
-                    <h3 class="text-lg font-bold text-slate-800 tracking-tight">ลอนโค้ดที่เกิดของเสียสูงสุด (กิโลกรัม Top 10)</h3>
-                </div>
-                <div class="chart-container">
-                    <canvas id="lonnCodeChart"></canvas>
                 </div>
             </div>
 
@@ -1143,8 +1143,8 @@
                 const passW = item[1];
                 const ncpW = customerNcpWeightMap[cust] ? customerNcpWeightMap[cust].total : 0;
                 const pct = (passW + ncpW) > 0 ? (ncpW / (passW + ncpW)) * 100 : 0;
-                return [truncateString(cust, 25), pct];
-            });
+                return { cust: truncateString(cust, 25), pct: pct };
+            }).sort((a, b) => b.pct - a.pct); // เรียงจาก % มากไปน้อย
 
             // NEW: Calculate Percentages for Top 10 NCP Customers
             const top10NcpRaw = Object.entries(customerNcpWeightMap)
@@ -1156,8 +1156,8 @@
                 const ncpW = item[1].total;
                 const passW = customerPassMap[cust] || 0;
                 const pct = (passW + ncpW) > 0 ? (ncpW / (passW + ncpW)) * 100 : 0;
-                return [truncateString(cust, 25), pct];
-            });
+                return { cust: truncateString(cust, 25), pct: pct };
+            }).sort((a, b) => b.pct - a.pct); // เรียงจาก % มากไปน้อย
 
             const reasonWeightSorted = Object.entries(reasonWeightMap).sort((a, b) => b[1] - a[1]);
 
@@ -1325,6 +1325,24 @@
                 }
             });
 
+            // Lonn Code Chart
+            if (lonnCodeChartObj) lonnCodeChartObj.destroy();
+            const ctxLonnCode = document.getElementById('lonnCodeChart').getContext('2d');
+            const lonnCodeGradient = createGradient(ctxLonnCode, '#06b6d4', '#0891b2', true);
+            
+            lonnCodeChartObj = new Chart(ctxLonnCode, {
+                type: 'bar',
+                data: {
+                    labels: lonnCodeSorted.map(d => d[0]),
+                    datasets: [{ label: 'น้ำหนักของเสีย (กก.)', data: lonnCodeSorted.map(d => d[1].toFixed(2)), backgroundColor: lonnCodeGradient, borderRadius: 6, borderSkipped: false }]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { grid: { borderDash: [4, 4] } }, y: { grid: { display: false } } }
+                }
+            });
+
             // NEW: Customer Pass Percent Chart
             if (customerPassPercentChartObj) customerPassPercentChartObj.destroy();
             const ctxCustPassPct = document.getElementById('customerPassPercentChart').getContext('2d');
@@ -1333,10 +1351,10 @@
             customerPassPercentChartObj = new Chart(ctxCustPassPct, {
                 type: 'bar',
                 data: {
-                    labels: top10PassPercentData.map(d => d[0]),
+                    labels: top10PassPercentData.map(d => d.cust),
                     datasets: [{ 
                         label: 'อัตราของเสีย (%)', 
-                        data: top10PassPercentData.map(d => d[1].toFixed(2)), 
+                        data: top10PassPercentData.map(d => d.pct.toFixed(2)), 
                         backgroundColor: passPctGradient, 
                         borderRadius: 6, 
                         borderSkipped: false 
@@ -1366,10 +1384,10 @@
             customerNcpPercentChartObj = new Chart(ctxCustNcpPct, {
                 type: 'bar',
                 data: {
-                    labels: top10NcpPercentData.map(d => d[0]),
+                    labels: top10NcpPercentData.map(d => d.cust),
                     datasets: [{ 
                         label: 'อัตราของเสีย (%)', 
-                        data: top10NcpPercentData.map(d => d[1].toFixed(2)), 
+                        data: top10NcpPercentData.map(d => d.pct.toFixed(2)), 
                         backgroundColor: ncpPctGradient, 
                         borderRadius: 6, 
                         borderSkipped: false 
@@ -1388,24 +1406,6 @@
                         }, 
                         y: { grid: { display: false } } 
                     }
-                }
-            });
-
-            // Lonn Code Chart
-            if (lonnCodeChartObj) lonnCodeChartObj.destroy();
-            const ctxLonnCode = document.getElementById('lonnCodeChart').getContext('2d');
-            const lonnCodeGradient = createGradient(ctxLonnCode, '#06b6d4', '#0891b2', true);
-            
-            lonnCodeChartObj = new Chart(ctxLonnCode, {
-                type: 'bar',
-                data: {
-                    labels: lonnCodeSorted.map(d => d[0]),
-                    datasets: [{ label: 'น้ำหนักของเสีย (กก.)', data: lonnCodeSorted.map(d => d[1].toFixed(2)), backgroundColor: lonnCodeGradient, borderRadius: 6, borderSkipped: false }]
-                },
-                options: {
-                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: { x: { grid: { borderDash: [4, 4] } }, y: { grid: { display: false } } }
                 }
             });
 
